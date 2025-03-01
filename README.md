@@ -1,4 +1,4 @@
-# sistema de monitoreo, control de temperatura y administracion de Alimentos
+# Sistema de monitoreo, control de temperatura y administracion de Alimentos
 
 ## Autores
 
