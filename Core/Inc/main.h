@@ -57,6 +57,24 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define RGB_R_Pin GPIO_PIN_0
+#define RGB_R_GPIO_Port GPIOA
+#define RGB_G_Pin GPIO_PIN_1
+#define RGB_G_GPIO_Port GPIOA
+#define RGB_B_Pin GPIO_PIN_2
+#define RGB_B_GPIO_Port GPIOA
+#define Temperature_sensor_Pin GPIO_PIN_3
+#define Temperature_sensor_GPIO_Port GPIOA
+#define Voltage_measure_Pin GPIO_PIN_4
+#define Voltage_measure_GPIO_Port GPIOA
+#define Alerta_voltaje_min_Pin GPIO_PIN_6
+#define Alerta_voltaje_min_GPIO_Port GPIOA
+#define Motor_control_Pin GPIO_PIN_5
+#define Motor_control_GPIO_Port GPIOB
+#define Boton_1_Pin GPIO_PIN_6
+#define Boton_1_GPIO_Port GPIOB
+#define Boton_2_Pin GPIO_PIN_7
+#define Boton_2_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 
