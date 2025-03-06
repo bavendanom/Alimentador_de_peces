@@ -1,0 +1,14 @@
+../Core/Src/Flash.c:16:6:Flash_read_identification_id	1
+../Core/Src/Flash.c:39:6:flash_csn	2
+../Core/Src/Flash.c:48:6:Flash_read_status1_register	1
+../Core/Src/Flash.c:63:6:Flash_read_status2_register	1
+../Core/Src/Flash.c:78:6:Flash_read_status3_register	1
+../Core/Src/Flash.c:93:6:Flash_activate_deactivate_block_protect	1
+../Core/Src/Flash.c:106:6:Write_flash_enable	1
+../Core/Src/Flash.c:116:6:Flash_verificate_status	2
+../Core/Src/Flash.c:136:6:Flash_write_page	1
+../Core/Src/Flash.c:157:6:Flash_read_page	1
+../Core/Src/Flash.c:175:6:Flash_page_erase	1
+../Core/Src/Flash.c:194:6:Flash_sector_erase	1
+../Core/Src/Flash.c:213:6:Flash_block_erase	1
+../Core/Src/Flash.c:233:6:erase_all	1

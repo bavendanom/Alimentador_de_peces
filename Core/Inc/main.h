@@ -69,6 +69,8 @@ void Error_Handler(void);
 #define Voltage_measure_GPIO_Port GPIOA
 #define Alerta_voltaje_min_Pin GPIO_PIN_6
 #define Alerta_voltaje_min_GPIO_Port GPIOA
+#define SPI2_CS_Pin GPIO_PIN_12
+#define SPI2_CS_GPIO_Port GPIOB
 #define Motor_control_Pin GPIO_PIN_5
 #define Motor_control_GPIO_Port GPIOB
 #define Boton_1_Pin GPIO_PIN_6
