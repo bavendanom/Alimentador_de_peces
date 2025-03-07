@@ -61,7 +61,7 @@ main-build: alimentador_de_peces.elf secondary-outputs
 
 # Tool invocations
 alimentador_de_peces.elf alimentador_de_peces.map: $(OBJS) $(USER_OBJS) C:\Users\braya\OneDrive\Documentos\9_Semestre\diseño_digital\STM32\Alimentador_de_peces\STM32F030C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "alimentador_de_peces.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\braya\OneDrive\Documentos\9_Semestre\diseño_digital\STM32\Alimentador_de_peces\STM32F030C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="alimentador_de_peces.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "alimentador_de_peces.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m0 -T"C:\Users\braya\OneDrive\Documentos\9_Semestre\diseño_digital\STM32\Alimentador_de_peces\STM32F030C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="alimentador_de_peces.map" -Wl,--gc-sections -static -u _printf_float --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

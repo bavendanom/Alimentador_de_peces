@@ -24,6 +24,7 @@
 #include "Flash.h"
 #include <string.h>
 #include <stdio.h>
+#include "ds1307.h"
 
 /* USER CODE END Includes */
 
@@ -49,13 +50,12 @@ I2C_HandleTypeDef hi2c2;
 
 SPI_HandleTypeDef hspi2;
 
+TIM_HandleTypeDef htim1;
+
 UART_HandleTypeDef huart1;
 
-DMA_HandleTypeDef hdma_usart1_rx;
-DMA_HandleTypeDef hdma_usart1_tx;
-
 /* USER CODE BEGIN PV */
-uint8_t transmit_text[ 64 ];
+char transmit_text[ 64 ];
 extern uint8_t read_flash_Byte[ 255 ];
 volatile uint8_t address_to_write[3] ;
 uint8_t things_to_write[255];
@@ -70,85 +70,122 @@ static void MX_ADC_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-#define DS1307_ADDRESS 0xD0  // HAL requiere dirección de 8 bits (shift left)
-
-
-// Convert normal decimal numbers to binary coded decimal
-uint8_t decToBcd(int val)
-{
-  return (uint8_t)( (val/10*16) + (val%10) );
-}
-// Convert binary coded decimal to normal decimal numbers
-int bcdToDec(uint8_t val)
-{
-  return (int)( (val/16*10) + (val%16) );
-}
-
-typedef struct{
-	uint8_t seconds;
-	uint8_t minutes;
-	uint8_t hour;
-	uint8_t dayofweek;
-	uint8_t dayofmonth;
-	uint8_t month;
-	uint8_t year;
-}TIME;
-
-TIME time;
-
-/* function to set time */
-
-void Set_Time (uint8_t sec, uint8_t min, uint8_t hour, uint8_t dow, uint8_t dom, uint8_t month, uint8_t year)
-{
-	uint8_t set_time[7];
-	set_time[0] = decToBcd(sec);
-	set_time[1] = decToBcd(min);
-	set_time[2] = decToBcd(hour);
-	set_time[3] = decToBcd(dow);
-	set_time[4] = decToBcd(dom);
-	set_time[5] = decToBcd(month);
-	set_time[6] = decToBcd(year);
-
-	HAL_I2C_Mem_Write(&hi2c2, DS1307_ADDRESS, 0x00, 1, set_time, 7, 1000);
-}
-
-/**
-  * @brief  Write an amount of data in blocking mode to a specific memory address
-  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
-  *                the configuration information for the specified I2C.
-  * @param  DevAddress Target device address: The device 7 bits address value
-  *         in datasheet must be shifted to the left before calling the interface
-  * @param  MemAddress Internal memory address
-  * @param  MemAddSize Size of internal memory address
-  * @param  pData Pointer to data buffer
-  * @param  Size Amount of data to be sent
-  * @param  Timeout Timeout duration
-  * @retval HAL status
-  */
-HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c2, uint16_t DevAddress, uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size, uint32_t Timeout);
-
-
-void Get_Time (void)
-{
-	uint8_t get_time[7];
-	HAL_I2C_Mem_Read(&hi2c2, DS1307_ADDRESS, 0x00, 1, get_time, 7, 1000);
-	time.seconds = bcdToDec(get_time[0]);
-	time.minutes = bcdToDec(get_time[1]);
-	time.hour = bcdToDec(get_time[2]);
-	time.dayofweek = bcdToDec(get_time[3]);
-	time.dayofmonth = bcdToDec(get_time[4]);
-	time.month = bcdToDec(get_time[5]);
-	time.year = bcdToDec(get_time[6]);
-}
-
 char buffer[16];
+
+/* Temperature sensor ---------------------------------------------------------*/
+void Set_Pin_Input (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin){
+	//HAL_GPIO_DeInit(GPIOx, GPIO_Pin);
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	/*Configure GPIO pin : PA0 */
+	GPIO_InitStruct.Pin = GPIO_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+void Set_Pin_Output (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin){
+	//HAL_GPIO_DeInit(GPIOx, GPIO_Pin);
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	/*Configure GPIO pin : PA0 */
+	GPIO_InitStruct.Pin = GPIO_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+
+void delay (uint16_t us)
+{
+	__HAL_TIM_SET_COUNTER(&htim1,0);  // set the counter value a 0
+	while (__HAL_TIM_GET_COUNTER(&htim1) < us);  // wait for the counter to reach the us input in the parameter
+}
+
+uint8_t DS18B20_Start (void)
+{
+	uint8_t Response = 0;
+	Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);   // set the pin as output
+	HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin low
+	delay (480);   // delay according to datasheet
+
+	Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);    // set the pin as input
+	delay (80);    // delay according to datasheet
+
+	if (!(HAL_GPIO_ReadPin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin))) Response = 1;    // if the pin is low i.e the presence pulse is detected
+	else Response = 0;
+
+	delay (400); // 480 us delay totally.
+
+	return Response;
+}
+void DS18B20_Write (uint8_t data)
+{
+	Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as output
+
+	for (int i=0; i<8; i++)
+	{
+
+		if ((data & (1<<i))!=0)  // if the bit is high
+		{
+			// write 1
+
+			Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as output
+			HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin LOW
+			delay (1);  // wait for 1 us
+
+			Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as input
+			delay (60);  // wait for 60 us
+		}
+
+		else  // if the bit is low
+		{
+			// write 0
+
+			Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
+			HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin LOW
+			delay (60);  // wait for 60 us
+
+			Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
+		}
+	}
+}
+float convert_temperature(uint8_t byte_1, uint8_t byte_2 ){
+	uint16_t tempval = byte_2 << 8 | byte_1;
+	float result_temp = (128.0 / 2048)*tempval;
+
+	return  result_temp;
+
+}
+uint8_t DS18B20_Read (void)
+{
+	uint8_t value=0;
+	Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
+
+	for (int i=0;i<8;i++)
+	{
+		Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);;   // set as output
+
+		HAL_GPIO_WritePin (GPIOA, GPIO_PIN_3, 0);  // pull the data pin LOW
+		delay (2);  // wait for 2 us
+
+		Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as input
+		delay (5);  // wait for 2 us
+		if (HAL_GPIO_ReadPin (GPIOA, GPIO_PIN_3))  // if the pin is HIGH
+		{
+			value |= 1<<i;  // read = 1
+		}
+		delay (60);  // wait for 60 us
+	}
+	return value;
+}
+
+/* Temperature sensor ---------------------------------------------------------*/
 
 /* USER CODE END 0 */
 
@@ -185,13 +222,13 @@ int main(void)
   MX_I2C2_Init();
   MX_SPI2_Init();
   MX_USART1_UART_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-
+  HAL_TIM_Base_Start(&htim1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //Set_Time(00, 03, 14, 5, 3, 1, 19);
   Flash_read_identification_id();
 //  Flash_activate_deactivate_block_protect();
 //  uint8_t status_reg1;
@@ -211,10 +248,18 @@ int main(void)
 //  Flash_write_page( 0x00, 0x01, 0x02 , &things_to_write[0] , 255 );
 //  Flash_read_page(0x00, 0x01, 0x02, 255);
 //  Flash_read_page(0x00, 0x01, 0x02, 255);
-  	  //DS1307_Init(); // Función que configura hora inicial si es necesario
 
+
+  // Esta funcion configura el reloj, solo es necesario correrla una sola vez
   //(sec, min, hour, dow, dom, month, year)
   //Set_Time(00, 00, 01, 4, 6, 3, 25);
+
+  	//HAL_UART_Transmit(&huart2, "hi", 2, 1000);
+    uint8_t Presence;
+    uint8_t Temp_byte1;
+    uint8_t Temp_byte2;
+    uint8_t size_to_send;
+    float  temp_dec;
 
   while (1)
   {
@@ -224,10 +269,32 @@ int main(void)
 
 	Get_Time();
 	sprintf(buffer, "%02d:%02d:%02d\r\n", time.hour, time.minutes, time.seconds);
-	//buffer[8] = '\0'; // Añade manualmente el terminador
+	HAL_UART_Transmit(&huart1,(uint8_t *)buffer, strlen(buffer), 100);
+	HAL_Delay(1000);
 
-	//sprintf(buffer, "TEST");
-	HAL_UART_Transmit(&huart1,(uint8_t *)buffer, strlen(buffer), 100); // Debe mostrar "TEST"
+	Presence = DS18B20_Start();
+	HAL_Delay (1);
+	DS18B20_Write (0xCC);  // skip ROM
+	DS18B20_Write (0x44);  // convert t
+	HAL_Delay (800);
+
+	Presence = DS18B20_Start ();
+	HAL_Delay(1);
+	DS18B20_Write (0xCC);  // skip ROM
+	DS18B20_Write (0xBE);  // Read Scratch-pad
+
+	Temp_byte1 = DS18B20_Read();
+	Temp_byte2 = DS18B20_Read();
+
+	//HAL_UART_Transmit(&huart1,(uint8_t *) "read \r\n", 9, 1000);
+	size_to_send = sprintf( transmit_text, "presence %d el primer %d y el segundo %d \r\n", Presence,Temp_byte1,Temp_byte2);
+	transmit_text[size_to_send] = '\0';
+	HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
+	temp_dec = convert_temperature(Temp_byte1 , Temp_byte2);
+	size_to_send = sprintf( transmit_text, "result temperature %.2f\r\n", temp_dec );
+	transmit_text[size_to_send] = '\0';
+	HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
+
 	HAL_Delay(1000);
 
 
@@ -239,6 +306,8 @@ int main(void)
 	HAL_Delay(1000);
 	HAL_GPIO_TogglePin(RGB_B_GPIO_Port, RGB_B_Pin);
 	HAL_Delay(1000);
+
+
   }
   /* USER CODE END 3 */
 }
@@ -261,7 +330,10 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.HSI14CalibrationValue = 16;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PREDIV = RCC_PREDIV_DIV1;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -271,11 +343,11 @@ void SystemClock_Config(void)
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -328,17 +400,9 @@ static void MX_ADC_Init(void)
 
   /** Configure for the selected ADC regular channel to be converted.
   */
-  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Channel = ADC_CHANNEL_4;
   sConfig.Rank = ADC_RANK_CHANNEL_NUMBER;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Configure for the selected ADC regular channel to be converted.
-  */
-  sConfig.Channel = ADC_CHANNEL_4;
   if (HAL_ADC_ConfigChannel(&hadc, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -365,7 +429,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x00201D2B;
+  hi2c2.Init.Timing = 0x10805D88;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -438,6 +502,52 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 47;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 0xffff-1;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -491,13 +601,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, RGB_R_Pin|RGB_G_Pin|RGB_B_Pin|Alerta_voltaje_min_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, RGB_R_Pin|RGB_G_Pin|RGB_B_Pin|Temperature_sensor_Pin
+                          |Alerta_voltaje_min_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : RGB_R_Pin RGB_G_Pin RGB_B_Pin Alerta_voltaje_min_Pin */
-  GPIO_InitStruct.Pin = RGB_R_Pin|RGB_G_Pin|RGB_B_Pin|Alerta_voltaje_min_Pin;
+  /*Configure GPIO pins : RGB_R_Pin RGB_G_Pin RGB_B_Pin Temperature_sensor_Pin
+                           Alerta_voltaje_min_Pin */
+  GPIO_InitStruct.Pin = RGB_R_Pin|RGB_G_Pin|RGB_B_Pin|Temperature_sensor_Pin
+                          |Alerta_voltaje_min_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
