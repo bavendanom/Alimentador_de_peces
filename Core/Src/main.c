@@ -24,6 +24,7 @@
 #include "Flash.h"
 #include <string.h>
 #include <stdio.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,11 +51,16 @@ SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart1;
 
+DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart1_tx;
+
 /* USER CODE BEGIN PV */
 uint8_t transmit_text[ 64 ];
 extern uint8_t read_flash_Byte[ 255 ];
 volatile uint8_t address_to_write[3] ;
 uint8_t things_to_write[255];
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,6 +76,79 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+#define DS1307_ADDRESS 0xD0  // HAL requiere dirección de 8 bits (shift left)
+
+
+// Convert normal decimal numbers to binary coded decimal
+uint8_t decToBcd(int val)
+{
+  return (uint8_t)( (val/10*16) + (val%10) );
+}
+// Convert binary coded decimal to normal decimal numbers
+int bcdToDec(uint8_t val)
+{
+  return (int)( (val/16*10) + (val%16) );
+}
+
+typedef struct{
+	uint8_t seconds;
+	uint8_t minutes;
+	uint8_t hour;
+	uint8_t dayofweek;
+	uint8_t dayofmonth;
+	uint8_t month;
+	uint8_t year;
+}TIME;
+
+TIME time;
+
+/* function to set time */
+
+void Set_Time (uint8_t sec, uint8_t min, uint8_t hour, uint8_t dow, uint8_t dom, uint8_t month, uint8_t year)
+{
+	uint8_t set_time[7];
+	set_time[0] = decToBcd(sec);
+	set_time[1] = decToBcd(min);
+	set_time[2] = decToBcd(hour);
+	set_time[3] = decToBcd(dow);
+	set_time[4] = decToBcd(dom);
+	set_time[5] = decToBcd(month);
+	set_time[6] = decToBcd(year);
+
+	HAL_I2C_Mem_Write(&hi2c2, DS1307_ADDRESS, 0x00, 1, set_time, 7, 1000);
+}
+
+/**
+  * @brief  Write an amount of data in blocking mode to a specific memory address
+  * @param  hi2c Pointer to a I2C_HandleTypeDef structure that contains
+  *                the configuration information for the specified I2C.
+  * @param  DevAddress Target device address: The device 7 bits address value
+  *         in datasheet must be shifted to the left before calling the interface
+  * @param  MemAddress Internal memory address
+  * @param  MemAddSize Size of internal memory address
+  * @param  pData Pointer to data buffer
+  * @param  Size Amount of data to be sent
+  * @param  Timeout Timeout duration
+  * @retval HAL status
+  */
+HAL_StatusTypeDef HAL_I2C_Mem_Write(I2C_HandleTypeDef *hi2c2, uint16_t DevAddress, uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size, uint32_t Timeout);
+
+
+void Get_Time (void)
+{
+	uint8_t get_time[7];
+	HAL_I2C_Mem_Read(&hi2c2, DS1307_ADDRESS, 0x00, 1, get_time, 7, 1000);
+	time.seconds = bcdToDec(get_time[0]);
+	time.minutes = bcdToDec(get_time[1]);
+	time.hour = bcdToDec(get_time[2]);
+	time.dayofweek = bcdToDec(get_time[3]);
+	time.dayofmonth = bcdToDec(get_time[4]);
+	time.month = bcdToDec(get_time[5]);
+	time.year = bcdToDec(get_time[6]);
+}
+
+char buffer[16];
 
 /* USER CODE END 0 */
 
@@ -112,7 +191,7 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
+  //Set_Time(00, 03, 14, 5, 3, 1, 19);
   Flash_read_identification_id();
 //  Flash_activate_deactivate_block_protect();
 //  uint8_t status_reg1;
@@ -132,11 +211,26 @@ int main(void)
 //  Flash_write_page( 0x00, 0x01, 0x02 , &things_to_write[0] , 255 );
 //  Flash_read_page(0x00, 0x01, 0x02, 255);
 //  Flash_read_page(0x00, 0x01, 0x02, 255);
+  	  //DS1307_Init(); // Función que configura hora inicial si es necesario
+
+  //(sec, min, hour, dow, dom, month, year)
+  //Set_Time(00, 00, 01, 4, 6, 3, 25);
+
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+	Get_Time();
+	sprintf(buffer, "%02d:%02d:%02d\r\n", time.hour, time.minutes, time.seconds);
+	//buffer[8] = '\0'; // Añade manualmente el terminador
+
+	//sprintf(buffer, "TEST");
+	HAL_UART_Transmit(&huart1,(uint8_t *)buffer, strlen(buffer), 100); // Debe mostrar "TEST"
+	HAL_Delay(1000);
+
+
 	HAL_GPIO_TogglePin(Alerta_voltaje_min_GPIO_Port, Alerta_voltaje_min_Pin);
 	HAL_Delay(1000);
 	HAL_GPIO_TogglePin(RGB_R_GPIO_Port, RGB_R_Pin);
@@ -271,7 +365,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x2000090E;
+  hi2c2.Init.Timing = 0x00201D2B;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -391,6 +485,8 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
