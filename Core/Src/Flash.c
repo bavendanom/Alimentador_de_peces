@@ -171,7 +171,6 @@ void Flash_read_page(uint8_t address_1, uint8_t address_2, uint8_t address_3, ui
 	flash_csn(1);
 }
 
-
 void Flash_page_erase(uint8_t address_1, uint8_t address_2, uint8_t address_3)
 {
 	Flash_verificate_status();

@@ -6,7 +6,7 @@
 uint8_t Presence;
 uint8_t Temp_byte1;
 uint8_t Temp_byte2;
-uint8_t size_to_send;
+extern uint8_t size_to_send;
 
 void Set_Pin_Input (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin){
 	//HAL_GPIO_DeInit(GPIOx, GPIO_Pin);

@@ -8,7 +8,7 @@
 ../Core/Src/Flash.c:116:6:Flash_verificate_status	16	static
 ../Core/Src/Flash.c:136:6:Flash_write_page	72	dynamic
 ../Core/Src/Flash.c:157:6:Flash_read_page	48	static
-../Core/Src/Flash.c:175:6:Flash_page_erase	48	static
-../Core/Src/Flash.c:194:6:Flash_sector_erase	48	static
-../Core/Src/Flash.c:213:6:Flash_block_erase	48	static
-../Core/Src/Flash.c:233:6:erase_all	16	static
+../Core/Src/Flash.c:174:6:Flash_page_erase	48	static
+../Core/Src/Flash.c:193:6:Flash_sector_erase	48	static
+../Core/Src/Flash.c:212:6:Flash_block_erase	48	static
+../Core/Src/Flash.c:232:6:erase_all	16	static

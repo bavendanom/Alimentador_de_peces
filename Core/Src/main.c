@@ -22,10 +22,16 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Flash.h"
-#include <string.h>
-#include <stdio.h>
+#include "string.h"
+#include "stdio.h"
+#include "stdlib.h"
 #include "ds1307.h"
 #include "ds18b20.h"
+#include "stdbool.h"
+#include "stdio.h"
+#include "stdarg.h"
+
+//#include "command_handler.h"
 
 /* USER CODE END Includes */
 
@@ -51,17 +57,58 @@ I2C_HandleTypeDef hi2c2;
 
 SPI_HandleTypeDef hspi2;
 
-//TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim14;
 
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+
+#define BUFFER_SIZE 50
+
+char buffer[16];
 char transmit_text[ 64 ];
 extern uint8_t read_flash_Byte[ 255 ];
 volatile uint8_t address_to_write[3] ;
 uint8_t things_to_write[255];
+uint8_t size_to_send;
 
+char uart_buffer[BUFFER_SIZE];  // Buffer para recepción UART
+uint8_t uart_index = 0;         // Índice del buffer
+uint8_t received_char;   // Variable temporal para recibir caracteres
+
+char read_buffer[4];
+
+int min_red = 0, max_red = 100;
+int min_green = 0, max_green = 100;
+int min_blue = 0, max_blue = 100;
+int time_RTC = 0;
+float temperature = 0;
+float temperatura_promedio;
+char value_to_write[4];
+
+
+uint16_t counter_2_5min;
+uint8_t counter_1min;
+uint16_t counter10s;
+uint16_t counter2_5s;
+uint8_t counteraux;
+
+int sec = 0, min = 0, hour = 0, dow = 0, dom = 0, month = 0, year = 0;
+
+
+typedef struct {
+    int min_red;
+    int max_red;
+    int min_green;
+    int max_green;
+    int min_blue;
+    int max_blue;
+} FlashParams;
+
+FlashParams config; // Variable global para almacenar los valores
+
+/* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
 
@@ -73,121 +120,180 @@ static void MX_I2C2_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM14_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-char buffer[16];
+void process_command(char *command);
 
-///* Temperature sensor ---------------------------------------------------------*/
-//void Set_Pin_Input (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin){
-//	//HAL_GPIO_DeInit(GPIOx, GPIO_Pin);
-//	GPIO_InitTypeDef GPIO_InitStruct = {0};
-//	/*Configure GPIO pin : PA0 */
-//	GPIO_InitStruct.Pin = GPIO_Pin;
-//	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-//	GPIO_InitStruct.Pull = GPIO_PULLUP;
-//	HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
-//}
-//
-//void Set_Pin_Output (GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin){
-//	//HAL_GPIO_DeInit(GPIOx, GPIO_Pin);
-//	GPIO_InitTypeDef GPIO_InitStruct = {0};
-//	/*Configure GPIO pin : PA0 */
-//	GPIO_InitStruct.Pin = GPIO_Pin;
-//	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-//	GPIO_InitStruct.Pull = GPIO_NOPULL;
-//	HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
-//}
-//
-//
-//void delay (uint16_t us)
-//{
-//	__HAL_TIM_SET_COUNTER(&htim1,0);  // set the counter value a 0
-//	while (__HAL_TIM_GET_COUNTER(&htim1) < us);  // wait for the counter to reach the us input in the parameter
-//}
-//
-//uint8_t DS18B20_Start (void)
-//{
-//	uint8_t Response = 0;
-//	Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);   // set the pin as output
-//	HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin low
-//	delay (480);   // delay according to datasheet
-//
-//	Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);    // set the pin as input
-//	delay (80);    // delay according to datasheet
-//
-//	if (!(HAL_GPIO_ReadPin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin))) Response = 1;    // if the pin is low i.e the presence pulse is detected
-//	else Response = 0;
-//
-//	delay (400); // 480 us delay totally.
-//
-//	return Response;
-//}
-//void DS18B20_Write (uint8_t data)
-//{
-//	Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as output
-//
-//	for (int i=0; i<8; i++)
-//	{
-//
-//		if ((data & (1<<i))!=0)  // if the bit is high
-//		{
-//			// write 1
-//
-//			Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as output
-//			HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin LOW
-//			delay (1);  // wait for 1 us
-//
-//			Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as input
-//			delay (60);  // wait for 60 us
-//		}
-//
-//		else  // if the bit is low
-//		{
-//			// write 0
-//
-//			Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
-//			HAL_GPIO_WritePin (Temperature_sensor_GPIO_Port, Temperature_sensor_Pin, 0);  // pull the pin LOW
-//			delay (60);  // wait for 60 us
-//
-//			Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
-//		}
-//	}
-//}
-//float convert_temperature(uint8_t byte_1, uint8_t byte_2 ){
-//	uint16_t tempval = byte_2 << 8 | byte_1;
-//	float result_temp = (128.0 / 2048)*tempval;
-//
-//	return  result_temp;
-//
-//}
-//uint8_t DS18B20_Read (void)
-//{
-//	uint8_t value=0;
-//	Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);
-//
-//	for (int i=0;i<8;i++)
-//	{
-//		Set_Pin_Output(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);;   // set as output
-//
-//		HAL_GPIO_WritePin (GPIOA, GPIO_PIN_3, 0);  // pull the data pin LOW
-//		delay (2);  // wait for 2 us
-//
-//		Set_Pin_Input(Temperature_sensor_GPIO_Port, Temperature_sensor_Pin);  // set as input
-//		delay (5);  // wait for 2 us
-//		if (HAL_GPIO_ReadPin (GPIOA, GPIO_PIN_3))  // if the pin is HIGH
-//		{
-//			value |= 1<<i;  // read = 1
-//		}
-//		delay (60);  // wait for 60 us
-//	}
-//	return value;
-//}
-//
-///* Temperature sensor ---------------------------------------------------------*/
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+    // Verifica qué Timer generó la interrupción
+    if (htim->Instance == TIM14) {  // TIMx es el número del Timer que estás usando
+    	//Temperature_To_Uart();
+    	counter2_5s++;
+    	counteraux++;
+
+    if ( counter2_5s % 4 == 0 ){
+    	counter10s++;
+
+    	}
+    if (counter2_5s % 60 == 0) {
+		counter_2_5min++;
+	}
+    if (counter2_5s % 24 ==0){
+    	counter_1min++;
+
+    }
+   }
+}
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+    	if (received_char == '\n') {
+			uart_buffer[uart_index] = '\0';
+			process_command(uart_buffer);
+			memset(uart_buffer, 0, BUFFER_SIZE); // Limpiar buffer
+			uart_index = 0;
+        } else if (received_char != '\r') { // Ignorar '\r'
+            if (uart_index < BUFFER_SIZE - 1) {
+                uart_buffer[uart_index++] = received_char;
+            }
+        }
+        HAL_UART_Receive_IT(&huart1, &received_char, 1); // Reactivar recepción
+    }
+}
+
+
+void process_command(char *command) {
+    char param[15];
+    int value;
+    char debug_msg[50];
+    char time_str[15];
+    int sec, min, hour, dow, dom, month, year;
+
+    // Limpiar el comando (eliminar \r, \n y espacios)
+    char *clean_cmd = strtok(command, "\r\n ");
+    if (clean_cmd == NULL) {
+        HAL_UART_Transmit(&huart1, (uint8_t *)"ERROR: Comando vacio\n", strlen("ERROR: Comando vacio\r\n"), 100);
+        return;
+    }
+
+    if (sscanf(clean_cmd, "%9[^$]$%d", param, &value) == 2) {
+        // Confirmar recepción del comando
+        snprintf(debug_msg, sizeof(debug_msg), "CMD: %s=%d\r\n", param, value);
+        HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100);
+
+        if (strcmp(param, "MIN_RED") == 0) {
+            min_red = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MIN_RED\r\n", strlen("OK_MIN_RED\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MIN RED: %d\r\n", min_red);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.min_red = value; // Actualizar estructura
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config)); // Guardar en Fla
+
+        }else if (strcmp(param, "MAX_RED") == 0) {
+            max_red = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MAX_RED\r\n", strlen("OK_MAX_RED\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MAX RED: %d\r\n", max_red);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.max_red = value;
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+
+        }else if (strcmp(param, "MIN_GREEN") == 0) {
+            min_green = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MAX_GREEN\r\n", strlen("OK_MAX_GREEN\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MIN GREEN: %d\r\n", min_green);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.min_green = value;
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+
+        }else if (strcmp(param, "MAX_GREEN") == 0) {
+            max_green = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MAX_GREEN\r\n", strlen("OK_MAX_GREEN\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MAX GREEN: %d\r\n", max_green);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.max_green = value;
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+
+        }else if (strcmp(param, "MIN_BLUE") == 0) {
+            min_blue = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MAX_BLUE\r\n", strlen("OK_MAX_BLUE\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MIN BLUE: %d\r\n", min_blue);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.min_blue = value;
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+
+        }else if (strcmp(param, "MAX_BLUE") == 0) {
+            max_blue = value;
+            HAL_UART_Transmit(&huart1, (uint8_t *)"OK_MAX_BLUE\r\n", strlen("OK_MAX_BLUE\r\n"), 100);
+            snprintf(debug_msg, sizeof(debug_msg), "SET MAX BLUE: %d\r\n", max_blue);
+            HAL_UART_Transmit(&huart1, (uint8_t *)debug_msg, strlen(debug_msg), 100); // Usar strlen
+
+            config.max_blue = value;
+            Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+
+        }
+    }if (sscanf(command, "%9[^$]$%14s", param, time_str) == 2) {
+        if (strcmp(param, "SET_TIME") == 0) {
+            // Extraer cada campo de 2 dígitos
+            if (sscanf(time_str, "%2d%2d%2d%2d%2d%2d%2d",
+                &sec, &min, &hour, &dow, &dom, &month, &year) == 7) {
+
+                // Validar rangos (ejemplo básico)
+                if (sec < 0 || sec > 59 || min < 0 || min > 59 ||
+                    hour < 0 || hour > 23 || dow < 1 || dow > 7 ||
+                    dom < 1 || dom > 31 || month < 1 || month > 12) {
+                    HAL_UART_Transmit(&huart1, (uint8_t *)"ERROR: Valores fuera de rango\r\n", 30, 100);
+                    return;
+                }
+
+                // Configurar el RTC
+                Set_Time(sec, min, hour, dow, dom, month, year);
+                HAL_UART_Transmit(&huart1, (uint8_t *)"Hora configurada\r\n", 18, 100);
+            } else {
+                HAL_UART_Transmit(&huart1, (uint8_t *)"ERROR: Formato inválido\r\n", 25, 100);
+            }
+        }
+    }else {
+        HAL_UART_Transmit(&huart1, (uint8_t *)"ERROR: Formato invalido\n", strlen("ERROR: Formato invalido\n"), 100);
+    }
+}
+
+
+void check_temperature(float temperature) {
+    // Apagar todos los LEDs primero
+    HAL_GPIO_WritePin(RGB_R_GPIO_Port, RGB_R_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(RGB_G_GPIO_Port, RGB_G_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(RGB_B_GPIO_Port, RGB_B_Pin, GPIO_PIN_RESET);
+
+    // Encender LEDs según los rangos configurados
+    if (temperature >= min_red && temperature <= max_red) {
+        HAL_GPIO_WritePin(RGB_R_GPIO_Port, RGB_R_Pin, GPIO_PIN_SET); // Encender rojo
+    }
+    if (temperature >= min_green && temperature <= max_green) {
+        HAL_GPIO_WritePin(RGB_G_GPIO_Port, RGB_G_Pin, GPIO_PIN_SET); // Encender verde
+    }
+    if (temperature >= min_blue && temperature <= max_blue) {
+        HAL_GPIO_WritePin(RGB_B_GPIO_Port, RGB_B_Pin, GPIO_PIN_SET); // Encender azul
+    }
+}
+
+void Print_Temperature_To_Uart(void){
+	temperature = DS18B20_ReadTemperature();
+	check_temperature(temperature);
+	size_to_send = sprintf( transmit_text, "result temperature %.2f\r\n", temperature);
+	transmit_text[size_to_send] = '\0';
+	HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
+}
 
 /* USER CODE END 0 */
 
@@ -225,43 +331,54 @@ int main(void)
   MX_SPI2_Init();
   MX_USART1_UART_Init();
   MX_TIM1_Init();
+  MX_TIM14_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim1);
+  HAL_TIM_Base_Start_IT(&htim14);
+
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   Flash_read_identification_id();
-//  Flash_activate_deactivate_block_protect();
-//  uint8_t status_reg1;
-//  uint8_t status_reg2;
-//  uint8_t status_reg3;
-//
-//  Flash_read_status1_register( &status_reg1 );
-//  Flash_read_status2_register( &status_reg2 );
-//  Flash_read_status3_register( &status_reg3 );
-//
-//  Flash_read_page(0x00, 0x01, 0x00, 255);
-//  Flash_sector_erase(0x00, 0x01, 0x02);
-//  Flash_read_page(0x00, 0x01, 0x00, 255);
-//  //uint8_t size_to_send;
-//  //size_to_send = sprintf( (char*)things_to_write, "the temperature is: %d \r\n", 30 );
-//  sprintf( (char*)things_to_write, "the temperature is: %d \r\n", 30 );
-//  Flash_write_page( 0x00, 0x01, 0x02 , &things_to_write[0] , 255 );
-//  Flash_read_page(0x00, 0x01, 0x02, 255);
-//  Flash_read_page(0x00, 0x01, 0x02, 255);
 
-
-  // Esta funcion configura el reloj, solo es necesario correrla una sola vez
-  //(sec, min, hour, dow, dom, month, year)
+  /*Esta funcion configura el reloj, solo es necesario correrla una sola vez
+  (sec, min, hour, dow, dom, month, year)*/
   //Set_Time(00, 00, 01, 4, 6, 3, 25);
 
-  	//HAL_UART_Transmit(&huart2, "hi", 2, 1000);
-//    uint8_t Presence;
-//    uint8_t Temp_byte1;
-//    uint8_t Temp_byte2;
-    uint8_t size_to_send;
-//    float  temp_dec;
+
+
+   HAL_UART_Receive_IT(&huart1, &received_char, 1); // Iniciar recepción UART
+
+   Flash_page_erase(0x00, 0x00, 0x00);
+   // Leer configuración desde Flash
+	 Flash_read_page(0x00, 0x00, 0x00, sizeof(config)); // Dirección 0x000000
+	 memcpy(&config, read_flash_Byte, sizeof(config));
+
+
+	 if(config.min_red == 0xFFFFFFFF){ // Asume que 0xFFFFFFFF es el valor por defecto
+	     config.min_red = 30; // Valor por defecto
+	     config.max_red = 40;
+	     config.min_green = 25;
+	     config.max_green = 30;
+	     config.min_blue = 20;
+	     config.max_blue = 25;
+	     Flash_write_page(0x00, 0x00, 0x00, (uint8_t*)&config, sizeof(config));
+	 }
+
+	 // Asignar valores a las variables globales
+	 min_red = config.min_red;
+	 max_red = config.max_red;
+	 min_green = config.min_green;
+	 max_green = config.max_green;
+	 min_blue = config.min_blue;
+	 max_blue = config.max_blue;
+
+	 temperatura_promedio =0;
+	 Print_Temperature_To_Uart();
+
 
   while (1)
   {
@@ -274,45 +391,30 @@ int main(void)
 	HAL_UART_Transmit(&huart1,(uint8_t *)buffer, strlen(buffer), 100);
 	HAL_Delay(1000);
 
-//	Presence = DS18B20_Start();
-//	HAL_Delay (1);
-//	DS18B20_Write (0xCC);  // skip ROM
-//	DS18B20_Write (0x44);  // convert t
-//	HAL_Delay (800);
-//
-//	Presence = DS18B20_Start ();
-//	HAL_Delay(1);
-//	DS18B20_Write (0xCC);  // skip ROM
-//	DS18B20_Write (0xBE);  // Read Scratch-pad
-//
-//	Temp_byte1 = DS18B20_Read();
-//	Temp_byte2 = DS18B20_Read();
-//
-//	//HAL_UART_Transmit(&huart1,(uint8_t *) "read \r\n", 9, 1000);
-//	size_to_send = sprintf( transmit_text, "presence %d el primer %d y el segundo %d \r\n", Presence,Temp_byte1,Temp_byte2);
-//	transmit_text[size_to_send] = '\0';
-//	HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
-//	temp_dec = convert_temperature(Temp_byte1 , Temp_byte2);
-
-	float temperature = DS18B20_ReadTemperature();
-	size_to_send = sprintf( transmit_text, "result temperature %.2f\r\n", temperature);
-	transmit_text[size_to_send] = '\0';
-	HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
-
-	HAL_Delay(1000);
 
 
-	HAL_GPIO_TogglePin(Alerta_voltaje_min_GPIO_Port, Alerta_voltaje_min_Pin);
-	HAL_Delay(1000);
-	HAL_GPIO_TogglePin(RGB_R_GPIO_Port, RGB_R_Pin);
-	HAL_Delay(1000);
-	HAL_GPIO_TogglePin(RGB_G_GPIO_Port, RGB_G_Pin);
-	HAL_Delay(1000);
-	HAL_GPIO_TogglePin(RGB_B_GPIO_Port, RGB_B_Pin);
-	HAL_Delay(1000);
+	if (counter10s >=1) {
+		Print_Temperature_To_Uart();
+		counter10s = 0;
+		temperatura_promedio = temperatura_promedio + temperature;
+
+	 }
+	if (counter_1min >= 1) {
+
+		  temperatura_promedio = temperatura_promedio/6.0;
+		  size_to_send = sprintf( transmit_text, "temperatura promedio guardada en flash: %.1f\r\n", temperatura_promedio);
+		  HAL_UART_Transmit(&huart1, (uint8_t *)transmit_text, size_to_send, 1000);
+		  sprintf(value_to_write, "%.1f", temperatura_promedio);
+		  Flash_page_erase(0x00, 0x03, 0x00);
+		  Flash_write_page(0x00,0x03,0x00,(uint8_t *)value_to_write,strlen(value_to_write));
+
+		  counter_1min = 0;
+		  temperatura_promedio = 0;
+	}
 
 
-  }
+
+ }
   /* USER CODE END 3 */
 }
 
@@ -552,6 +654,37 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM14 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM14_Init(void)
+{
+
+  /* USER CODE BEGIN TIM14_Init 0 */
+
+  /* USER CODE END TIM14_Init 0 */
+
+  /* USER CODE BEGIN TIM14_Init 1 */
+
+  /* USER CODE END TIM14_Init 1 */
+  htim14.Instance = TIM14;
+  htim14.Init.Prescaler = 47999;
+  htim14.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim14.Init.Period = 2499;
+  htim14.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim14.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim14) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM14_Init 2 */
+
+  /* USER CODE END TIM14_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -646,6 +779,8 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+// Verificar si la Flash está vacía (valores iniciales)
+
 /* USER CODE END 4 */
 
 /**
